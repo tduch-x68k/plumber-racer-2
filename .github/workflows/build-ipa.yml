@@ -1,0 +1,136 @@
+name: Build MKW IPA (Apple Silicon)
+
+on:
+  workflow_dispatch:  # manual trigger only
+
+jobs:
+  build:
+    runs-on: xcode-27        # Apple Silicon, macOS 27 + Xcode 27 toolchain
+    timeout-minutes: 360
+
+    steps:
+    - name: Free disk space
+      run: |
+        echo "Before cleanup:"
+        df -h /
+        # Nuke everything we don't need
+        sudo rm -rf /Library/Developer/CoreSimulator 2>/dev/null || true
+        sudo rm -rf ~/Library/Developer/CoreSimulator 2>/dev/null || true
+        sudo rm -rf /usr/local/share/powershell 2>/dev/null || true
+        sudo rm -rf /usr/local/lib/node_modules 2>/dev/null || true
+        sudo rm -rf /usr/local/share/chromium 2>/dev/null || true
+        sudo rm -rf /usr/local/share/edge 2>/dev/null || true
+        sudo rm -rf /usr/local/share/dotnet 2>/dev/null || true
+        sudo rm -rf ~/.dotnet 2>/dev/null || true
+        sudo rm -rf /usr/local/share/vcpkg 2>/dev/null || true
+        sudo rm -rf /usr/local/Caskroom 2>/dev/null || true
+        sudo rm -rf /opt/homebrew/Caskroom 2>/dev/null || true
+        # Remove extra Xcode versions if any (keep only the selected one)
+        ACTIVE_XCODE=$(xcode-select -p | sed 's|/Contents/Developer||')
+        for xc in /Applications/Xcode*.app; do
+          if [ "$xc" != "$ACTIVE_XCODE" ]; then
+            echo "Removing extra Xcode: $xc"
+            sudo rm -rf "$xc" 2>/dev/null || true
+          fi
+        done
+        # Remove Android SDK
+        sudo rm -rf ~/Library/Android 2>/dev/null || true
+        sudo rm -rf /usr/local/lib/android 2>/dev/null || true
+        echo "After cleanup:"
+        df -h /
+
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Verify Xcode 27
+      run: |
+        xcodebuild -version
+        xcrun -sdk iphoneos metal --version
+        echo "Metal compiler arch: $(file $(xcrun -sdk iphoneos -f metal))"
+
+    - name: Install iOS platform
+      run: |
+        if ! xcrun --sdk iphoneos --show-sdk-version 2>/dev/null; then
+          xcodebuild -downloadPlatform iOS
+        fi
+        xcrun --sdk iphoneos --show-sdk-version
+
+    - name: Install build tools
+      run: |
+        brew install xcodegen glslang zstd
+        pip3 install --break-system-packages lz4 "capstone>=5,<6" fonttools
+        pip3 install --break-system-packages "backports.zstd" 2>/dev/null || true
+
+    - name: Install .NET SDK
+      run: |
+        brew install --cask dotnet-sdk || true
+        dotnet --version || true
+
+    - name: Download and extract game dump
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        mkdir -p ~/Games/MarioKartWorld
+
+        echo "Disk space before download:"
+        df -h /
+
+        # Download parts one at a time, append to a FIFO, extract on the fly
+        # First get the list of assets
+        ASSETS=$(gh release view game-dump -R ${{ github.repository }} --json assets -q '.assets[].name' | sort)
+        echo "Release assets:"
+        echo "$ASSETS"
+
+        # Download all parts, pipe through zstd and tar in one stream
+        # Use a named pipe so we can delete parts as we go
+        mkfifo /tmp/game_pipe
+
+        # Start extraction in background reading from pipe
+        zstd -d --stdout < /tmp/game_pipe | tar xf - -C ~/Games/MarioKartWorld &
+        EXTRACT_PID=$!
+
+        # Download and feed each part, deleting after it's written
+        (
+          for asset in $ASSETS; do
+            echo "Downloading $asset..."
+            gh release download game-dump -R ${{ github.repository }} -p "$asset" -D /tmp/
+            cat "/tmp/$asset"
+            rm -f "/tmp/$asset"
+            echo "  Freed $asset" >&2
+          done
+        ) > /tmp/game_pipe
+
+        wait $EXTRACT_PID
+        rm -f /tmp/game_pipe
+
+        echo "Disk space after extract:"
+        df -h /
+
+        echo "=== Game dump contents ==="
+        ls -la ~/Games/MarioKartWorld/
+        du -sh ~/Games/MarioKartWorld/
+
+    - name: Build IPA
+      run: |
+        python3 scripts/build_ipa_from_nsp.py ~/Games/MarioKartWorld \
+          --platform ios \
+          --romfs separate \
+          -o ~/MarioKartWorld.ipa
+
+    - name: Upload IPA artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MarioKartWorld-IPA
+        path: ~/MarioKartWorld.ipa
+        retention-days: 7
+
+    - name: Upload build logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          build/
+          *.log
+        retention-days: 3
