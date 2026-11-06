@@ -38,7 +38,9 @@ jobs:
     - name: Install build tools
       run: |
         brew install xcodegen glslang zstd
-        pip3 install --break-system-packages lz4 "capstone>=5,<6" fonttools "backports.zstd"
+        pip3 install --break-system-packages lz4 "capstone>=5,<6" fonttools
+        # backports.zstd only needed on Python <3.14 (3.14+ has native zstd)
+        pip3 install --break-system-packages "backports.zstd" 2>/dev/null || echo "Skipping backports.zstd (Python 3.14+ has native zstd)"
 
     - name: Install .NET SDK
       run: |
