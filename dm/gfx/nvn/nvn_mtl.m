@@ -2768,8 +2768,10 @@ static id<MTLTexture> pkg_upload_(const tex_t *t, uint64_t *stamp, id<MTLTexture
     if (!d) return nil;
     d.usage |= keep & (MTLTextureUsageRenderTarget | MTLTextureUsagePixelFormatView);
     int rb_shift = rb_packed_shift(t->d.format);   // the RGB565 family is repacked into Metal's order on the CPU (rb_packed_shift)
-    // On the CPU while its pool has no zero-copy buffer: the GPU's upload would give it one (mtl_addr), and iOS reads a buffer's whole pool into memory and wires it, for a pool the GPU may otherwise never address
-    int keep_cpu = (pst_eligible(t) || DM_GAME_TEX_SOFT) && t->has_layout && !mtl_pool_wrapped(t->mem, t->L.size);
+    // On the CPU while its pool has no zero-copy buffer: the GPU's upload would give it one (mtl_addr), and a buffer's whole range is read into memory and wired for
+    // the residency set, for a pool the GPU may otherwise never address. With the guest memory in files that wiring shows up as frames of 60 ms and more, so the
+    // gate follows the guest memory, not the profile: it is on whenever the guest block is a set of files (mem_file), and with tex_soft as well
+    int keep_cpu = (dm_guest_file_backed() || DM_GAME_TEX_SOFT) && t->has_layout && !mtl_pool_wrapped(t->mem, t->L.size);
     unsigned sk = tex_soft(t) ? 1 : 0;   // source level = host level + sk
     int direct = !sk && !keep_cpu && !rb_shift && stamp && direct_upload_on() && g_nvn_deswz_gpu && !(t->pool && nvn_sparse_pool(t->pool)) && nvn_deswz_gpu_direct_supported(&t->d);
     if (direct) d.usage |= MTLTextureUsageShaderWrite | MTLTextureUsagePixelFormatView;
