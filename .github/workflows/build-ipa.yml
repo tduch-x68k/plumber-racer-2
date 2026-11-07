@@ -100,6 +100,8 @@ jobs:
         du -sh ~/Games/MarioKartWorld/
 
     - name: Build IPA
+      env:
+        DM_PSO_GPUS: none   # skip offline pipeline archive — the CI runner's GPU isn't the target M1; the device builds its own on first launch
       run: |
         python3 scripts/build_ipa_from_nsp.py ~/Games/MarioKartWorld \
           --platform ios \

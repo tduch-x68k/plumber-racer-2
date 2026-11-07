@@ -44,6 +44,13 @@ shader_note	Mario Kart World shaders
 # agl's render buffer binding wraps its clears in render conditions in Donkey Kong Bananza (its game note): the same engine here, so they are evaluated from the start
 render_cond	on
 
+# ---- Pipeline state objects (Metal 4) ----
+# Build the pulling vertex libraries (_bp.metallib) into the IPA so hybrid pipelines work at runtime: a draw that needs a
+# pipeline base it has not compiled yet uses a simplified pulling shader while the real one compiles in the background,
+# instead of blocking on compilation. The device builds its pipeline archive on first start; DM_PSO_GPUS=none at build time
+# skips the offline archive when the build machine's GPU does not match the target.
+pso_mtl4	on
+
 # ---- Operation mode ----
 # The user plays this port handheld at 60 fps (the iPhone, and the Mac for testing): the game starts in handheld mode
 op_mode	handheld
