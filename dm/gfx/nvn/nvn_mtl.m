@@ -2762,6 +2762,7 @@ static id<MTLTexture> sparse_upload(const tex_t *t, uint64_t *stamp, MTLTextureU
     return mt;
 }
 
+extern int dm_guest_file_backed(void);   // hle_svc.c (weak default in nvn_dirty.c): 1 when the guest block is a set of files (mem_file)
 static id<MTLTexture> pkg_upload_(const tex_t *t, uint64_t *stamp, id<MTLTexture> reuse, MTLTextureUsage keep) {
     { id<MTLTexture> s = sparse_upload(t, stamp, keep, 0); if (s) return s; }   // a large texture of a sparse pool: only its mapped tiles take memory
     MTLTextureDescriptor *d = tex_desc(t, 1);
