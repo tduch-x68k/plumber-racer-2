@@ -99,6 +99,14 @@ jobs:
         ls -la ~/Games/MarioKartWorld/
         du -sh ~/Games/MarioKartWorld/
 
+    - name: Restore shader cache
+      uses: actions/cache@v4
+      with:
+        path: ~/Games/MarioKartWorld/0400C3F00006E000_build/shader
+        key: shaders-${{ hashFiles('dm/gfx/tools/dmsh_chain.lock', 'dm/games/0400C3F00006E000/game.tsv') }}
+        restore-keys: |
+          shaders-
+
     - name: Build IPA
       env:
         DM_PSO_GPUS: none   # skip offline pipeline archive — the CI runner's GPU isn't the target M1; the device builds its own on first launch
